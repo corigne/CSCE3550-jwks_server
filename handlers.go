@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"log"
-	"math/big"
 	"net/http"
 	"sync"
 	"time"
@@ -42,7 +41,7 @@ func methodNotAllowedHandler(w http.ResponseWriter, _ *http.Request) {
 func index(w http.ResponseWriter, req *http.Request) {
 	if req.URL.Path != "/" {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte("404 page not found\n"))
+		_, _ = w.Write([]byte("404 page not found\n"))
 		return
 	}
 	if req.Method != http.MethodGet {
@@ -68,6 +67,7 @@ func index(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+// handles key generation at runtime and when auth endpoint is hit
 func genKeys() {
 	keysLock.Lock()
 	defer keysLock.Unlock()
@@ -106,10 +106,7 @@ func genKeys() {
 	}
 }
 
-func encodeBase64(b *big.Int) string {
-	return base64.RawURLEncoding.EncodeToString(b.Bytes())
-}
-
+// handles jwks route
 func jwksHandler(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodGet {
 		methodNotAllowedHandler(w, req)
@@ -128,7 +125,7 @@ func jwksHandler(w http.ResponseWriter, req *http.Request) {
 				"kid": key.Kid,
 				"exp": key.ExpiresAt.Unix(),
 				"alg": "RS256",
-				"n":   encodeBase64(pubKey.N),
+				"n":   base64.RawURLEncoding.EncodeToString(pubKey.N.Bytes()),
 				"e":   "AQAB",
 			})
 		}
@@ -141,11 +138,15 @@ func jwksHandler(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+// Handles auth route.
 func authHandler(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodPost {
 		methodNotAllowedHandler(w, req)
 		return
 	}
+
+	// guarantees expired and unexpired key will exist when route hit
+	// normally you wouldn't do it this way obviously, but this is easy
 	genKeys()
 	expired := req.URL.Query().Get("expired") == "true"
 

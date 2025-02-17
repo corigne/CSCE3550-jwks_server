@@ -14,6 +14,8 @@ var (
 
 const HTTP_LISTEN_PORT = 8080
 
+// It's pretty difficult to get coverage here for some reason. :\
+// Still got 80% though.
 func main() {
 	genKeys()
 	registerHandlers()

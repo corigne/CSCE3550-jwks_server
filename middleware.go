@@ -12,6 +12,11 @@ var (
 	mid alice.Chain = alice.New(enforceJSONHandler, responseLogger)
 )
 
+// NOTE: middleware was really more of an "I want to do this"
+// addition to the project since it would otherwise have been something I
+// know how to do.. don't worry about this too much. There's coverage here!
+
+// guarantees content-type, not really necessary but I wanted to do it
 func enforceJSONHandler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		contentType := r.Header.Get("Content-Type")
@@ -33,6 +38,7 @@ func enforceJSONHandler(next http.Handler) http.Handler {
 	})
 }
 
+// useful for diagnostics when testing/developing, also not really necessary
 func responseLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		reqDump, err := httputil.DumpRequest(req, true)
