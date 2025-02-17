@@ -127,6 +127,12 @@ func TestAuthHandler(t *testing.T) {
 		t.Errorf("Expected 200, got %d", rr.Code)
 	}
 
+	var response map[string]string
+	json.Unmarshal(rr.Body.Bytes(), &response)
+	if _, exists := response["token"]; !exists {
+		t.Errorf("Expected a token in response")
+	}
+
 	req, _ = http.NewRequest("GET", "/auth", nil)
 	rr = httptest.NewRecorder()
 	handler = http.HandlerFunc(authHandler)
@@ -134,11 +140,5 @@ func TestAuthHandler(t *testing.T) {
 
 	if rr.Code != http.StatusMethodNotAllowed {
 		t.Errorf("Expected 415/MethodNotAllowed, got %d", rr.Code)
-	}
-
-	var response map[string]string
-	json.Unmarshal(rr.Body.Bytes(), &response)
-	if _, exists := response["token"]; !exists {
-		t.Errorf("Expected a token in response")
 	}
 }
