@@ -1,15 +1,15 @@
 package main
 
 import (
-	"encoding/json"
-	"log"
-	"net/http"
-	"sync"
-	"time"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
+	"encoding/json"
+	"log"
 	"math/big"
+	"net/http"
+	"sync"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
