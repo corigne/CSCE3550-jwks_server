@@ -40,6 +40,11 @@ func methodNotAllowedHandler(w http.ResponseWriter, _ *http.Request) {
 }
 
 func index(w http.ResponseWriter, req *http.Request) {
+	if req.URL.Path != "/" {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte("404 page not found\n"))
+		return
+	}
 	if req.Method != http.MethodGet {
 		methodNotAllowedHandler(w, req)
 		return
