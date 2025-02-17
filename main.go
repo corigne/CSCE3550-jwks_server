@@ -14,6 +14,7 @@ var (
 const HTTP_LISTEN_PORT = 8080
 
 func main() {
+	genKeys()
 	registerHandlers()
 	startTime = time.Now()
 	fmt.Printf("Starting JWKS server at: %v...\n", startTime.Local().Format(time.RFC3339))
