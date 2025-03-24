@@ -1,0 +1,530 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>CSCE3550_jwks_server: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/corigne/CSCE3550_jwks_server/db.go (80.4%)</option>
+				
+				<option value="file1">github.com/corigne/CSCE3550_jwks_server/handlers.go (81.2%)</option>
+				
+				<option value="file2">github.com/corigne/CSCE3550_jwks_server/main.go (0.0%)</option>
+				
+				<option value="file3">github.com/corigne/CSCE3550_jwks_server/middleware.go (94.1%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package main
+
+import (
+        "crypto/rand"
+        "crypto/rsa"
+        "database/sql"
+        "fmt"
+        "log"
+        "time"
+
+        _ "github.com/mattn/go-sqlite3"
+)
+
+const dbFile = "totally_not_my_privateKeys.db"
+
+var db *sql.DB
+
+func InitDatabase() error <span class="cov8" title="1">{
+        var err error
+        db, err = sql.Open("sqlite3", dbFile)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("Failed to open database: %v", err)
+        }</span>
+        <span class="cov8" title="1">createTableSQL := `CREATE TABLE IF NOT EXISTS keys(
+                kid INTEGER PRIMARY KEY AUTOINCREMENT,
+                key BLOB NOT NULL,
+                exp INTEGER NOT NULL
+        );`
+        _, err = db.Exec(createTableSQL)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("Failed to create table: %v", err)
+        }</span>
+        <span class="cov8" title="1">log.Println("Initialized database connection.")
+        return nil</span>
+}
+
+// handles key generation at runtime and when auth endpoint is hit
+func genKeys() <span class="cov8" title="1">{
+        keysLock.Lock()
+        defer keysLock.Unlock()
+
+        var hasExpired, hasUnexpired bool
+        now := time.Now().Unix()
+
+        err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM keys WHERE exp &lt; ?)", now).Scan(&amp;hasExpired)
+        if err != nil </span><span class="cov0" title="0">{
+                log.Fatalf("Failed to check expired keys: %v", err)
+        }</span>
+
+        <span class="cov8" title="1">err = db.QueryRow("SELECT EXISTS(SELECT 1 FROM keys WHERE exp &gt;= ?)", now).Scan(&amp;hasUnexpired)
+        if err != nil </span><span class="cov0" title="0">{
+                log.Fatalf("Failed to check unexpired keys: %v", err)
+        }</span>
+
+        <span class="cov8" title="1">if !hasExpired </span><span class="cov8" title="1">{
+                privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+                if err != nil </span><span class="cov0" title="0">{
+                        log.Fatalf("Failed to generate expired RSA key: %v", err)
+                }</span>
+
+                <span class="cov8" title="1">expiredPEM := encodePrivateKeyToPEM(privateKey)
+                expireTime := now - 600 // 10 min
+
+                err = InsertKey(expiredPEM, expireTime)
+                if err != nil </span><span class="cov0" title="0">{
+                        log.Fatalf("Failed to insert expired key into DB: %v", err)
+                }</span>
+
+        }
+
+        <span class="cov8" title="1">if !hasUnexpired </span><span class="cov8" title="1">{
+                privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+                if err != nil </span><span class="cov0" title="0">{
+                        log.Fatalf("Failed to generate unexpired RSA key: %v", err)
+                }</span>
+
+                <span class="cov8" title="1">validPEM := encodePrivateKeyToPEM(privateKey)
+                validTime := now + 600 // 10 min
+
+                err = InsertKey(validPEM, validTime)
+                if err != nil </span><span class="cov0" title="0">{
+                        log.Fatalf("Failed to insert valid key: %v", err)
+                }</span>
+        }
+}
+
+func InsertKey(privateKey string, expiry int64) error <span class="cov8" title="1">{
+        _, err := db.Exec("INSERT INTO keys (key, exp) VALUES (?, ?)", privateKey, expiry)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("Failed to insert key: %v", err)
+        }</span>
+        <span class="cov8" title="1">return nil</span>
+}
+
+func GetKey(expired bool) (*Key, error) <span class="cov8" title="1">{
+        var keyPEM string
+        var kid string
+        var exp int64
+
+        var query string
+        if expired </span><span class="cov8" title="1">{
+                query = "SELECT key, kid, exp FROM keys WHERE exp &lt;= ? ORDER BY exp DESC LIMIT 1"
+        }</span> else<span class="cov8" title="1"> {
+                query = "SELECT key, kid, exp FROM keys WHERE exp &gt; ? ORDER BY exp ASC LIMIT 1"
+        }</span>
+
+        <span class="cov8" title="1">err := db.QueryRow(query, time.Now().Unix()).Scan(&amp;keyPEM, &amp;kid, &amp;exp)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov8" title="1">key, err := decodePEMToPrivateKey(keyPEM)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov8" title="1">return &amp;Key{
+                PrivateKey: key,
+                Kid:        kid,
+                ExpiresAt:  time.Unix(exp, 0),
+        }, nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package main
+
+import (
+        "crypto/rsa"
+        "crypto/x509"
+        "encoding/base64"
+        "encoding/json"
+        "encoding/pem"
+
+        "bytes"
+        "errors"
+        "log"
+        "net/http"
+        "sync"
+        "time"
+
+        "github.com/golang-jwt/jwt/v5"
+)
+
+type Key struct {
+        PrivateKey *rsa.PrivateKey
+        Kid        string
+        ExpiresAt  time.Time
+}
+
+type JWKS struct {
+        Keys []map[string]interface{} `json:"keys"`
+}
+
+var (
+        keys     []Key
+        keysLock sync.RWMutex
+)
+
+func registerHandlers() <span class="cov8" title="1">{
+        mux.Handle("/", mid.Then(http.HandlerFunc(index)))
+        mux.Handle("/.well-known/jwks.json", mid.Then(http.HandlerFunc(jwksHandler)))
+        mux.Handle("/auth", mid.Then(http.HandlerFunc(authHandler)))
+}</span>
+
+func methodNotAllowedHandler(w http.ResponseWriter, _ *http.Request) <span class="cov8" title="1">{
+        http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+}</span>
+
+func index(w http.ResponseWriter, req *http.Request) <span class="cov8" title="1">{
+        if req.URL.Path != "/" </span><span class="cov8" title="1">{
+                w.WriteHeader(http.StatusNotFound)
+                _, _ = w.Write([]byte("404 page not found\n"))
+                return
+        }</span>
+        <span class="cov8" title="1">if req.Method != http.MethodGet </span><span class="cov8" title="1">{
+                methodNotAllowedHandler(w, req)
+                return
+        }</span>
+        <span class="cov8" title="1">w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusOK)
+
+        resp := make(map[string]string)
+        resp["message"] = "welcome to the njj0057 JWKS Server - STATUS: OK"
+        resp["start_time"] = startTime.Local().Format(time.RFC3339)
+        resp["uptime"] = time.Since(startTime).String()
+
+        jsonResp, err := json.Marshal(resp)
+        if err != nil </span><span class="cov0" title="0">{
+                log.Fatalf("Error in JSON Marshal. Err: %s", err)
+        }</span>
+
+        <span class="cov8" title="1">_, err = w.Write(jsonResp)
+        if err != nil </span><span class="cov0" title="0">{
+                log.Fatal("Unable to write to http response writer.")
+        }</span>
+}
+
+func encodePrivateKeyToPEM(privateKey *rsa.PrivateKey) string <span class="cov8" title="1">{
+        // Convert RSA private key to PKCS1 ASN.1 DER format
+        privDER := x509.MarshalPKCS1PrivateKey(privateKey)
+
+        // Encode DER data to PEM format
+        privBlock := &amp;pem.Block{
+                Type:  "RSA PRIVATE KEY",
+                Bytes: privDER,
+        }
+
+        var pemBuffer bytes.Buffer
+        if err := pem.Encode(&amp;pemBuffer, privBlock); err != nil </span><span class="cov0" title="0">{
+                panic("Failed to encode private key to PEM")</span> // Shouldn't happen in normal execution
+        }
+
+        <span class="cov8" title="1">return pemBuffer.String()</span>
+}
+
+func decodePEMToPrivateKey(pemStr string) (*rsa.PrivateKey, error) <span class="cov8" title="1">{
+        // Decode PEM block
+        block, _ := pem.Decode([]byte(pemStr))
+        if block == nil || block.Type != "RSA PRIVATE KEY" </span><span class="cov0" title="0">{
+                return nil, errors.New("failed to decode PEM block containing RSA private key")
+        }</span>
+
+        // Parse the DER-encoded private key
+        <span class="cov8" title="1">privateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov8" title="1">return privateKey, nil</span>
+}
+
+func fetchJWKSFromDB() (*JWKS, error) <span class="cov8" title="1">{
+        rows, err := db.Query("SELECT key, kid, exp FROM keys WHERE exp &gt; ?", time.Now().Unix())
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">defer rows.Close()
+
+        jwks := JWKS{}
+
+        for rows.Next() </span><span class="cov8" title="1">{
+                var keyPEM string
+                var kid string
+                var exp int64
+
+                if err := rows.Scan(&amp;keyPEM, &amp;kid, &amp;exp); err != nil </span><span class="cov0" title="0">{
+                        return nil, err
+                }</span>
+
+                // Decode PEM-encoded private key
+                <span class="cov8" title="1">privateKey, err := decodePEMToPrivateKey(keyPEM)
+                if err != nil </span><span class="cov0" title="0">{
+                        log.Printf("Skipping key %s due to decoding error: %v", kid, err)
+                        continue</span>
+                }
+
+                // Extract the public key
+                <span class="cov8" title="1">pubKey := privateKey.Public().(*rsa.PublicKey)
+
+                // Add public key details to JWKS response
+                jwks.Keys = append(jwks.Keys, map[string]interface{}{
+                        "kty": "RSA",
+                        "kid": kid,
+                        "exp": exp,
+                        "alg": "RS256",
+                        "n":   base64.RawURLEncoding.EncodeToString(pubKey.N.Bytes()),
+                        "e":   "AQAB",
+                })</span>
+        }
+
+        <span class="cov8" title="1">return &amp;jwks, nil</span>
+}
+
+// handles jwks route
+func jwksHandler(w http.ResponseWriter, req *http.Request) <span class="cov8" title="1">{
+        if req.Method != http.MethodGet </span><span class="cov8" title="1">{
+                methodNotAllowedHandler(w, req)
+                return
+        }</span>
+
+        <span class="cov8" title="1">keysLock.RLock()
+        defer keysLock.RUnlock()
+
+        jwks, err := fetchJWKSFromDB()
+        if err != nil </span><span class="cov0" title="0">{
+                http.Error(w, "Failed to fetch JWKS", http.StatusInternalServerError)
+                return
+        }</span>
+
+        <span class="cov8" title="1">w.Header().Set("Content-Type", "application/json")
+        err = json.NewEncoder(w).Encode(jwks)
+        if err != nil </span><span class="cov0" title="0">{
+                log.Fatal("Unable to encode jwks json.")
+        }</span>
+}
+
+// Handles auth route.
+func authHandler(w http.ResponseWriter, req *http.Request) <span class="cov8" title="1">{
+        if req.Method != http.MethodPost </span><span class="cov8" title="1">{
+                methodNotAllowedHandler(w, req)
+                return
+        }</span>
+
+        // guarantees expired and unexpired key will exist when route hit
+        // normally you wouldn't do it this way obviously, but this is easy
+        <span class="cov8" title="1">genKeys()
+        expired := req.URL.Query().Get("expired") == "true"
+        signingKey, err := GetKey(expired)
+        if err != nil </span><span class="cov0" title="0">{
+                http.Error(w, "No valid signing key found when one should exist.",
+                        http.StatusInternalServerError)
+        }</span>
+
+        <span class="cov8" title="1">token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+                "sub": "example_user",
+                "iat": time.Now().Unix(),
+                "exp": signingKey.ExpiresAt.Unix(),
+        })
+        token.Header["kid"] = signingKey.Kid
+
+        signedToken, err := token.SignedString(signingKey.PrivateKey)
+        if err != nil </span><span class="cov0" title="0">{
+                http.Error(w, "Failed to sign token", http.StatusInternalServerError)
+                return
+        }</span>
+
+        <span class="cov8" title="1">w.Header().Set("Content-Type", "application/json")
+        err = json.NewEncoder(w).Encode(map[string]string{"token": signedToken})
+        if err != nil </span><span class="cov0" title="0">{
+                log.Fatal("Unable to encode token json.")
+        }</span>
+}
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package main
+
+import (
+        "fmt"
+        "log"
+        "net/http"
+        "time"
+)
+
+var (
+        startTime time.Time
+        mux       *http.ServeMux = http.NewServeMux()
+)
+
+const HTTP_LISTEN_PORT = 8080
+
+// It's pretty difficult to get coverage here for some reason. :\
+// Still got 80% though.
+func main() <span class="cov0" title="0">{
+        err := InitDatabase()
+        if err != nil </span><span class="cov0" title="0">{
+                log.Fatalf("Database initialization failed: %v", err)
+        }</span>
+
+        <span class="cov0" title="0">genKeys()
+        registerHandlers()
+
+        startTime = time.Now()
+        log.Println("Starting JWKS Server - njj0057.")
+        err = http.ListenAndServe(fmt.Sprintf(":%d", HTTP_LISTEN_PORT), mux)
+        if err != nil </span><span class="cov0" title="0">{
+                log.Fatalf("ERROR IN HTTP SERVER: %v", err)
+        }</span>
+}
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package main
+
+import (
+        "github.com/justinas/alice"
+        "log"
+        "mime"
+        "net/http"
+        "net/http/httputil"
+)
+
+var (
+        mid alice.Chain = alice.New(enforceJSONHandler, responseLogger)
+)
+
+// NOTE: middleware was really more of an "I want to do this"
+// addition to the project since it would otherwise have been something I
+// know how to do.. don't worry about this too much. There's coverage here!
+
+// guarantees content-type, not really necessary but I wanted to do it
+func enforceJSONHandler(next http.Handler) http.Handler <span class="cov8" title="1">{
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) </span><span class="cov8" title="1">{
+                contentType := r.Header.Get("Content-Type")
+
+                if contentType != "" </span><span class="cov8" title="1">{
+                        mt, _, err := mime.ParseMediaType(contentType)
+                        if err != nil </span><span class="cov8" title="1">{
+                                http.Error(w, "Malformed Content-Type header", http.StatusBadRequest)
+                                return
+                        }</span>
+
+                        <span class="cov8" title="1">if mt != "application/json" </span><span class="cov8" title="1">{
+                                http.Error(w, "Content-Type header must be application/json", http.StatusUnsupportedMediaType)
+                                return
+                        }</span>
+                }
+
+                <span class="cov8" title="1">next.ServeHTTP(w, r)</span>
+        })
+}
+
+// useful for diagnostics when testing/developing, also not really necessary
+func responseLogger(next http.Handler) http.Handler <span class="cov8" title="1">{
+        return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) </span><span class="cov8" title="1">{
+                reqDump, err := httputil.DumpRequest(req, true)
+                if err != nil </span><span class="cov0" title="0">{
+                        log.Fatalf("ERROR: %v", err)
+                }</span>
+                <span class="cov8" title="1">log.Printf("REQ: %s", string(reqDump))
+                next.ServeHTTP(w, req)</span>
+        })
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>
