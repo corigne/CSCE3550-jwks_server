@@ -11,6 +11,8 @@ import (
 func TestRegisterHandlers(t *testing.T) {
 	// Reset mux before registering handlers
 	mux = http.NewServeMux()
+	_ = InitDatabase()
+	genKeys()
 
 	// Call function to register handlers
 	registerHandlers()
@@ -40,7 +42,7 @@ func TestRegisterHandlers(t *testing.T) {
 }
 
 func TestGenKeys(t *testing.T) {
-	keys = nil // Reset keys
+	_ = InitDatabase()
 	genKeys()
 
 	var hasExpired, hasUnexpired bool
@@ -101,6 +103,9 @@ func TestIndex(t *testing.T) {
 func TestJWKSHandler(t *testing.T) {
 	req, _ := http.NewRequest("GET", "/jwks", nil)
 	rr := httptest.NewRecorder()
+	_ = InitDatabase()
+	genKeys()
+
 
 	handler := http.HandlerFunc(jwksHandler)
 	handler.ServeHTTP(rr, req)
@@ -119,6 +124,8 @@ func TestJWKSHandler(t *testing.T) {
 func TestAuthHandler(t *testing.T) {
 	req, _ := http.NewRequest("POST", "/auth?expired=true", nil)
 	rr := httptest.NewRecorder()
+	_ = InitDatabase()
+	genKeys()
 
 	handler := http.HandlerFunc(authHandler)
 	handler.ServeHTTP(rr, req)
