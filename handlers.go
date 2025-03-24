@@ -3,8 +3,13 @@ package main
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
+
+	"bytes"
+	"errors"
 	"log"
 	"net/http"
 	"sync"
@@ -67,18 +72,56 @@ func index(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func encodePrivateKeyToPEM(privateKey *rsa.PrivateKey) string {
+	// Convert RSA private key to PKCS1 ASN.1 DER format
+	privDER := x509.MarshalPKCS1PrivateKey(privateKey)
+
+	// Encode DER data to PEM format
+	privBlock := &pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: privDER,
+	}
+
+	var pemBuffer bytes.Buffer
+	if err := pem.Encode(&pemBuffer, privBlock); err != nil {
+		panic("Failed to encode private key to PEM") // Shouldn't happen in normal execution
+	}
+
+	return pemBuffer.String()
+}
+
+func decodePEMToPrivateKey(pemStr string) (*rsa.PrivateKey, error) {
+	// Decode PEM block
+	block, _ := pem.Decode([]byte(pemStr))
+	if block == nil || block.Type != "RSA PRIVATE KEY" {
+		return nil, errors.New("failed to decode PEM block containing RSA private key")
+	}
+
+	// Parse the DER-encoded private key
+	privateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	return privateKey, nil
+}
+
 // handles key generation at runtime and when auth endpoint is hit
 func genKeys() {
 	keysLock.Lock()
 	defer keysLock.Unlock()
 
 	var hasExpired, hasUnexpired bool
-	for _, key := range keys {
-		if key.ExpiresAt.Before(time.Now()) {
-			hasExpired = true
-		} else {
-			hasUnexpired = true
-		}
+	now := time.Now().Unix()
+
+	err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM keys WHERE exp < ?)", now).Scan(&hasExpired)
+	if err != nil {
+		log.Fatalf("Failed to check expired keys: %v", err)
+	}
+
+	err = db.QueryRow("SELECT EXISTS(SELECT 1 FROM keys WHERE exp >= ?)", now).Scan(&hasUnexpired)
+	if err != nil {
+		log.Fatalf("Failed to check unexpired keys: %v", err)
 	}
 
 	if !hasExpired {
@@ -86,11 +129,15 @@ func genKeys() {
 		if err != nil {
 			log.Fatalf("Failed to generate expired RSA key: %v", err)
 		}
-		keys = append(keys, Key{
-			PrivateKey: privateKey,
-			Kid:        "expiredkey",
-			ExpiresAt:  time.Now().Add(-5 * time.Minute),
-		})
+
+		expiredPEM := encodePrivateKeyToPEM(privateKey)
+		expireTime := now - 600 // 10 min
+
+		err = InsertKey(expiredPEM, expireTime)
+		if err != nil {
+			log.Fatalf("Failed to insert expired key into DB: %v", err)
+		}
+
 	}
 
 	if !hasUnexpired {
@@ -98,12 +145,57 @@ func genKeys() {
 		if err != nil {
 			log.Fatalf("Failed to generate unexpired RSA key: %v", err)
 		}
-		keys = append(keys, Key{
-			PrivateKey: privateKey,
-			Kid:        "validkey",
-			ExpiresAt:  time.Now().Add(10 * time.Minute),
+
+		validPEM := encodePrivateKeyToPEM(privateKey)
+		validTime := now + 600 // 10 min
+
+		err = InsertKey(validPEM, validTime)
+		if err != nil {
+			log.Fatalf("Failed to insert valid key: %v", err)
+		}
+	}
+}
+
+func fetchJWKSFromDB() (*JWKS, error) {
+	rows, err := db.Query("SELECT key, kid, exp FROM keys WHERE exp > ?", time.Now().Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	jwks := JWKS{}
+
+	for rows.Next() {
+		var keyPEM string
+		var kid string
+		var exp int64
+
+		if err := rows.Scan(&keyPEM, &kid, &exp); err != nil {
+			return nil, err
+		}
+
+		// Decode PEM-encoded private key
+		privateKey, err := decodePEMToPrivateKey(keyPEM)
+		if err != nil {
+			log.Printf("Skipping key %s due to decoding error: %v", kid, err)
+			continue
+		}
+
+		// Extract the public key
+		pubKey := privateKey.Public().(*rsa.PublicKey)
+
+		// Add public key details to JWKS response
+		jwks.Keys = append(jwks.Keys, map[string]interface{}{
+			"kty": "RSA",
+			"kid": kid,
+			"exp": exp,
+			"alg": "RS256",
+			"n":   base64.RawURLEncoding.EncodeToString(pubKey.N.Bytes()),
+			"e":   "AQAB",
 		})
 	}
+
+	return &jwks, nil
 }
 
 // handles jwks route
@@ -116,23 +208,14 @@ func jwksHandler(w http.ResponseWriter, req *http.Request) {
 	keysLock.RLock()
 	defer keysLock.RUnlock()
 
-	jwks := JWKS{}
-	for _, key := range keys {
-		if key.ExpiresAt.After(time.Now()) {
-			pubKey := key.PrivateKey.Public().(*rsa.PublicKey)
-			jwks.Keys = append(jwks.Keys, map[string]interface{}{
-				"kty": "RSA",
-				"kid": key.Kid,
-				"exp": key.ExpiresAt.Unix(),
-				"alg": "RS256",
-				"n":   base64.RawURLEncoding.EncodeToString(pubKey.N.Bytes()),
-				"e":   "AQAB",
-			})
-		}
+	jwks, err := fetchJWKSFromDB()
+	if err != nil {
+		http.Error(w, "Failed to fetch JWKS", http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	err := json.NewEncoder(w).Encode(jwks)
+	err = json.NewEncoder(w).Encode(jwks)
 	if err != nil {
 		log.Fatal("Unable to encode jwks json.")
 	}
@@ -149,27 +232,10 @@ func authHandler(w http.ResponseWriter, req *http.Request) {
 	// normally you wouldn't do it this way obviously, but this is easy
 	genKeys()
 	expired := req.URL.Query().Get("expired") == "true"
-
-	keysLock.RLock()
-	var signingKey *Key
-	for _, key := range keys {
-		if expired {
-			if key.ExpiresAt.Before(time.Now()) {
-				signingKey = &key
-				break
-			}
-		} else {
-			if key.ExpiresAt.After(time.Now()) {
-				signingKey = &key
-				break
-			}
-		}
-	}
-	keysLock.RUnlock()
-
-	if signingKey == nil {
-		http.Error(w, "No valid signing key available", http.StatusInternalServerError)
-		return
+	signingKey, err := GetKey(expired)
+	if err != nil {
+		http.Error(w, "No valid signing key found when one should exist.",
+			http.StatusInternalServerError)
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
