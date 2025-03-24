@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
 	"database/sql"
 	"fmt"
 	"log"
@@ -30,6 +32,56 @@ func InitDatabase() error {
 	}
 	log.Println("Initialized database connection.")
 	return nil
+}
+
+// handles key generation at runtime and when auth endpoint is hit
+func genKeys() {
+	keysLock.Lock()
+	defer keysLock.Unlock()
+
+	var hasExpired, hasUnexpired bool
+	now := time.Now().Unix()
+
+	err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM keys WHERE exp < ?)", now).Scan(&hasExpired)
+	if err != nil {
+		log.Fatalf("Failed to check expired keys: %v", err)
+	}
+
+	err = db.QueryRow("SELECT EXISTS(SELECT 1 FROM keys WHERE exp >= ?)", now).Scan(&hasUnexpired)
+	if err != nil {
+		log.Fatalf("Failed to check unexpired keys: %v", err)
+	}
+
+	if !hasExpired {
+		privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+		if err != nil {
+			log.Fatalf("Failed to generate expired RSA key: %v", err)
+		}
+
+		expiredPEM := encodePrivateKeyToPEM(privateKey)
+		expireTime := now - 600 // 10 min
+
+		err = InsertKey(expiredPEM, expireTime)
+		if err != nil {
+			log.Fatalf("Failed to insert expired key into DB: %v", err)
+		}
+
+	}
+
+	if !hasUnexpired {
+		privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+		if err != nil {
+			log.Fatalf("Failed to generate unexpired RSA key: %v", err)
+		}
+
+		validPEM := encodePrivateKeyToPEM(privateKey)
+		validTime := now + 600 // 10 min
+
+		err = InsertKey(validPEM, validTime)
+		if err != nil {
+			log.Fatalf("Failed to insert valid key: %v", err)
+		}
+	}
 }
 
 func InsertKey(privateKey string, expiry int64) error {

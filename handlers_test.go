@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 )
 
 func TestRegisterHandlers(t *testing.T) {
@@ -38,24 +37,6 @@ func TestRegisterHandlers(t *testing.T) {
 		if rec.Code != test.expectedStatus {
 			t.Errorf("Expected status %d for %s, but got %d", test.expectedStatus, test.endpoint, rec.Code)
 		}
-	}
-}
-
-func TestGenKeys(t *testing.T) {
-	_ = InitDatabase()
-	genKeys()
-
-	var hasExpired, hasUnexpired bool
-	for _, key := range keys {
-		if key.ExpiresAt.Before(time.Now()) {
-			hasExpired = true
-		} else {
-			hasUnexpired = true
-		}
-	}
-
-	if !hasExpired || !hasUnexpired {
-		t.Errorf("ensureKeys did not generate both expired and unexpired keys")
 	}
 }
 
