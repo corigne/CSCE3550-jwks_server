@@ -3,14 +3,14 @@ Nathan Jodoin
 njj0057
 
 ## Tested On:
-go 1.24.2 linux/amd
+go 1.24.2 linux/amd  
 go 1.23 linux/amd
 
 ## HOW TO RUN:
 ### SETUP:
-a. Install golang (latest is preferred)
-b. Verify you have the latest version (or at least 1.23)
-c. CLONE THIS REPO (I believe in you)
+a. Install golang (latest is preferred)  
+b. Verify you have the latest version (or at least 1.23)  
+c. CLONE THIS REPO (I believe in you)  
 
 ### part 2
 1. open a terminal (or Powershell if you're a ~~filthy~~ Windows user)
