@@ -28,7 +28,8 @@ Your branch is up to date with 'origin/main'.
 ```
 ***Note:*** If you don't get the above diagnostic output right away, 
 your computer might be running slowly.  
-(Be patient, maybe hold a carrot in front of the hamster's wheel.)
+(Be patient, maybe hold a carrot in front of the hamster's wheel.)  
+
 4. If running gradebot, now is the time.
 
 ### part 1
